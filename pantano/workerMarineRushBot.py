@@ -18,13 +18,15 @@ class MarineReaperRushBot(BotAI):
     def __init__(self):
         # Select distance calculation method 0, which is the pure python distance calculation without caching or indexing, using math.hypot()
         self.distance_calculation_method: int = 3
-        self.minute_of_the_game: int = 0
-        self.ITERATIONS_PER_MINUTE: int = 165
+        self.minute_of_the_game: float = 0
+        self.ITERATIONS_PER_MINUTE: int = 165 * 2
         self.MAX_WORKERS:int = 65
         self.MARINE_RANGE: int = 5
         self.REAPER_RANGE: int = 5
         self.GROUPING_RANGE: int = 10
         self.TH_RANGE: int = 15
+        self.MAX_BARRACKS: int = 25
+        self.BARRACKS_PER_MINUTE: float = 5.0
 
     async def build_workers(self, workers_per_th: int):
         """Train new workers if the count is insufficient."""
@@ -32,7 +34,7 @@ class MarineReaperRushBot(BotAI):
         count = len(self.townhalls.idle) * workers_per_th
         for th in self.townhalls.idle:
             if (self.can_afford(UnitTypeId.SCV) and
-                self.units(UnitTypeId.SCV) < self.MAX_WORKERS and
+                self.units(UnitTypeId.SCV).amount < self.MAX_WORKERS and
                 self.supply_left > 0 and self.supply_workers < count):
                 th.train(UnitTypeId.SCV)
 
@@ -74,7 +76,10 @@ class MarineReaperRushBot(BotAI):
     async def morph_cc_to_orbitalcommand(self):
         """If possible morph the command center to the orbital command."""
 
-        if self.tech_requirement_progress(UnitTypeId.ORBITALCOMMAND) == 1:
+        if (
+            self.tech_requirement_progress(UnitTypeId.ORBITALCOMMAND) == 1 and
+            self.units(UnitTypeId.ORBITALCOMMAND).amount < self.minute_of_the_game / 3 # every 3 minutes can be morphed 1 CC
+        ):
             for cc in self.townhalls(UnitTypeId.COMMANDCENTER).idle:
                 if self.can_afford(UnitTypeId.ORBITALCOMMAND):
                     cc(AbilityId.UPGRADETOORBITAL_ORBITALCOMMAND)
@@ -166,17 +171,25 @@ class MarineReaperRushBot(BotAI):
     async def build_barracks(self, barracks_per_th: int, max_distance_from_th: int):
         """Build new baracks if can afford and the count not exceeded the parameter value."""
 
+        overall_allowed_barracks_count = self.minute_of_the_game * self.BARRACKS_PER_MINUTE
+        if self.minute_of_the_game % 1 == 0 and overall_allowed_barracks_count > self.MAX_BARRACKS:
+            self.BARRACKS_PER_MINUTE -= 0.25 # with every minute decrease the number of barracks per minute
+            print(f'Barrack allowed: {self.minute_of_the_game * self.BARRACKS_PER_MINUTE}')
+
         for th in self.townhalls.idle:
-            barracks_count = await self.count_builidngs_near_townhall(UnitTypeId.BARRACKS, self.TH_RANGE, th.position)
-            factory_count = await self.count_builidngs_near_townhall(UnitTypeId.FACTORY, self.TH_RANGE, th.position)
+            barracks_near_th = await self.count_builidngs_near_townhall(UnitTypeId.BARRACKS, self.TH_RANGE, th.position)
+            factory_near_th = await self.count_builidngs_near_townhall(UnitTypeId.FACTORY, self.TH_RANGE, th.position)
             if (
                 self.tech_requirement_progress(UnitTypeId.BARRACKS) == 1 and
-                (barracks_count + factory_count) < barracks_per_th and
+                (barracks_near_th + factory_near_th) < barracks_per_th and
+                self.units(UnitTypeId.BARRACKS).amount < overall_allowed_barracks_count and
+                self.units(UnitTypeId.BARRACKS).amount < self.MAX_BARRACKS and
                 self.can_afford(UnitTypeId.BARRACKS)
             ):
                 workers: Units = self.workers.gathering
                 if (workers):
-                    worker: Unit = workers.furthest_to(workers.center)
+                    worker: Unit = workers.closest_to(th)
+                    # worker: Unit = workers.furthest_to(workers.center)
                     location: Point2 = await self.find_placement(UnitTypeId.BARRACKS, th.position, max_distance=max_distance_from_th, placement_step=3)
                     if location:
                         worker.build(UnitTypeId.BARRACKS, location)
@@ -289,15 +302,17 @@ class MarineReaperRushBot(BotAI):
                 return True
         return False
 
-    async def unit_move_to_target_executed(self, unit: Unit, unit_range: float, can_attack_enemies: Units) -> bool:
+    async def unit_move_to_target_executed(self, unit: Unit, can_attack_enemies: Units) -> bool:
         """Move to nearest enemy unit/building because no enemy is within units range."""
 
         if can_attack_enemies:
             closest_enemy: Unit = can_attack_enemies.closest_to(unit)
             unit.move(closest_enemy)
             return True
-
-        unit.move(random.choice(self.enemy_start_locations))
+        else:
+            target = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
+            unit.attack(target)
+            # unit.move(random.choice(self.enemy_start_locations))
         return True
 
     async def reaper_retrieve_to_regenerate_executed(self, reaper: Unit, enemies_can_attack_ground: Units) -> bool:
@@ -334,7 +349,7 @@ class MarineReaperRushBot(BotAI):
         """Excecute reaper's action according the situation."""
 
         enemies: Units = self.enemy_units | self.enemy_structures
-        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground)
+        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground and unit.ground_range > 3) # Trying to elimintate the workers
         for r in self.units(UnitTypeId.REAPER):
             if await self.reaper_retrieve_to_regenerate_executed(r, enemies):
                 continue
@@ -345,21 +360,21 @@ class MarineReaperRushBot(BotAI):
             if await self.unit_stay_out_of_range_from_enemy_executed(r, self.REAPER_RANGE, enemies_can_attack):
                 continue
             if self.units(UnitTypeId.REAPER).idle.amount > 11:
-                if await self.unit_move_to_target_executed(r, self.REAPER_RANGE, self.enemy_units.not_flying):
+                if await self.unit_move_to_target_executed(r, self.enemy_units.not_flying):
                     continue
 
     async def marine_actions(self):
         """Excecute marine's action according the situation."""
 
         enemies: Units = self.enemy_units | self.enemy_structures
-        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground)
+        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground and unit.ground_range > 3) # Trying to elimintate the workers
         for m in self.units(UnitTypeId.MARINE).idle:
             if await self.unit_stay_out_of_range_from_enemy_executed(m, self.MARINE_RANGE, enemies_can_attack):
                 continue
             if await self.unit_attack_executed(m, enemies.filter(lambda unit: unit.distance_to(m) < self.MARINE_RANGE)):
                 continue
             if self.units(UnitTypeId.MARINE).idle.amount > 10:
-                if await self.unit_move_to_target_executed(m, self.MARINE_RANGE, enemies):
+                if await self.unit_move_to_target_executed(m, enemies):
                     continue
 
     async def use_orbitalcommand_ability(self):
@@ -373,9 +388,12 @@ class MarineReaperRushBot(BotAI):
 
     async def on_step(self, iteration: int):
             self.iteration = iteration
-            self.minute_of_the_game = round(iteration / self.ITERATIONS_PER_MINUTE)
+            # TODO: self.step_time() use step time to detect the iterations per minute (to dynamicaly detect)
+            self.minute_of_the_game = iteration / self.ITERATIONS_PER_MINUTE
+            if self.minute_of_the_game % 1 == 0:
+                print(f'Minutes of the game approximation: {self.minute_of_the_game}')
             await self.build_workers(22)
-            await self.build_supplydepots(5, 14)
+            await self.build_supplydepots(6, 10)
             await self.morph_cc_to_orbitalcommand()
             # await self.build_lab_and_research_medivac()
             await self.expand_to_new_location(4)
@@ -572,6 +590,7 @@ def main():
         realtime=False
     )
 
+# TODO: divide the troops for the attacking and for defending ones(maybe marines for defending.).
 
 if __name__ == "__main__":
     main()
