@@ -198,10 +198,11 @@ class MarineReaperRushBot(BotAI):
         """Build new refinery if can afford and at least one baracks are in counstruction within the distance from cc."""
             
         for th in self.townhalls.idle:
+            refineries_near_th = await self.count_builidngs_near_townhall(UnitTypeId.REFINERY, distance_from_cc, th.position)
             if (
                 self.structures(UnitTypeId.BARRACKS).ready.amount + self.already_pending(UnitTypeId.BARRACKS) > 0 and
                 self.already_pending(UnitTypeId.REFINERY) < 1 and
-                await self.count_builidngs_near_townhall(UnitTypeId.REFINERY, self.TH_RANGE, th.position) < refineries_per_th and
+                refineries_near_th < refineries_per_th and
                 self.can_afford(UnitTypeId.REFINERY)
             ):
                 vgs: Units = self.vespene_geyser.closer_than(distance_from_cc, th)
@@ -402,14 +403,10 @@ class MarineReaperRushBot(BotAI):
             # await self.build_factory(1)
             await self.train_reapers()
             # await self.train_marines()
-            # await self.train_siege_tanks()
-            # await self.train_medivac()
-            # await self.medivac_micromanagement()
             if iteration % 25 == 0:
                 await self.custom_distribute_workers()
             await self.reaper_actions()
             await self.group_units()
-            # await self.group_units_patrol()
             # await self.marine_actions()
             await self.workers_back_to_work()
             await self.use_orbitalcommand_ability()
@@ -589,8 +586,6 @@ def main():
         [Bot(Race.Terran, MarineReaperRushBot()), Computer(Race.Terran, Difficulty.Hard)],
         realtime=False
     )
-
-# TODO: divide the troops for the attacking and for defending ones(maybe marines for defending.).
 
 if __name__ == "__main__":
     main()
