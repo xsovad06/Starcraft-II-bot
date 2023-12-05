@@ -278,6 +278,15 @@ class MarineReaperRushBot(BotAI):
             unit.attack(closest_enemy)
             return True
         return False
+
+    async def unit_defend_executed(self, unit: Unit, known_enemies: Units) -> bool:
+        """Unit is ready to attack, shoot nearest enemy/building."""
+
+        if unit.weapon_cooldown == 0 and known_enemies:
+            closest_enemy: Unit =  known_enemies.sorted(lambda x: x.distance_to(unit))[0]
+            unit.attack(closest_enemy)
+            return True
+        return False
     
     async def reaper_throw_grenade_executed(self, reaper: Unit, enemies_can_attack: Units) -> bool:
         """Attack is on cooldown, if grenade is available throw it to furthest enemy."""
@@ -349,32 +358,40 @@ class MarineReaperRushBot(BotAI):
     async def reaper_actions(self):
         """Excecute reaper's action according the situation."""
 
+        reaper = UnitTypeId.REAPER
         enemies: Units = self.enemy_units | self.enemy_structures
-        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground and unit.ground_range > 3) # Trying to elimintate the workers
-        for r in self.units(UnitTypeId.REAPER):
+        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground and unit.ground_range > 2) # Trying to elimintate the workers
+        for r in self.units(reaper):
             if await self.reaper_retrieve_to_regenerate_executed(r, enemies):
                 continue
             if await self.unit_attack_executed(r, enemies.filter(lambda unit: unit.distance_to(r) < self.REAPER_RANGE and not unit.is_flying)):
                 continue
+            if self.units(reaper).idle.amount > self.aggresive_units[reaper]['defense']:
+                if await self.unit_defend_executed(r, enemies.filter(lambda unit: not unit.is_flying)):
+                    continue
             if await self.reaper_throw_grenade_executed(r, enemies_can_attack):
                 continue
             if await self.unit_stay_out_of_range_from_enemy_executed(r, self.REAPER_RANGE, enemies_can_attack):
                 continue
-            if self.units(UnitTypeId.REAPER).idle.amount > 11:
+            if self.units(reaper).idle.amount > self.aggresive_units[reaper]['attack']:
                 if await self.unit_move_to_target_executed(r, self.enemy_units.not_flying):
                     continue
 
     async def marine_actions(self):
         """Excecute marine's action according the situation."""
 
+        marine = UnitTypeId.MARINE
         enemies: Units = self.enemy_units | self.enemy_structures
         enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground and unit.ground_range > 3) # Trying to elimintate the workers
-        for m in self.units(UnitTypeId.MARINE).idle:
+        for m in self.units(marine).idle:
             if await self.unit_stay_out_of_range_from_enemy_executed(m, self.MARINE_RANGE, enemies_can_attack):
                 continue
             if await self.unit_attack_executed(m, enemies.filter(lambda unit: unit.distance_to(m) < self.MARINE_RANGE)):
                 continue
-            if self.units(UnitTypeId.MARINE).idle.amount > 10:
+            if self.units(marine).idle.amount > self.aggresive_units[marine]['defense']:
+                if await self.unit_defend_executed(m, enemies):
+                    continue
+            if self.units(marine).idle.amount > self.aggresive_units[marine]['attack']:
                 if await self.unit_move_to_target_executed(m, enemies):
                     continue
 
