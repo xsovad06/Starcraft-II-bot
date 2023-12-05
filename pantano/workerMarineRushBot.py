@@ -173,10 +173,9 @@ class MarineReaperRushBot(BotAI):
     async def build_barracks(self, barracks_per_th: int, max_distance_from_th: int):
         """Build new baracks if can afford and the count not exceeded the parameter value."""
 
-        overall_allowed_barracks_count = self.minute_of_the_game * self.BARRACKS_PER_MINUTE
-        if self.minute_of_the_game % 1 == 0 and overall_allowed_barracks_count > self.MAX_BARRACKS:
-            self.BARRACKS_PER_MINUTE -= 0.25 # with every minute decrease the number of barracks per minute
-            print(f'Barrack allowed: {self.minute_of_the_game * self.BARRACKS_PER_MINUTE}')
+        overall_allowed_barracks_count = min(self.minute_of_the_game * self.BARRACKS_PER_MINUTE, self.MAX_BARRACKS)
+        if self.minute_of_the_game % 1 == 0 and (self.minute_of_the_game * self.BARRACKS_PER_MINUTE) < self.MAX_BARRACKS:
+            self.BARRACKS_PER_MINUTE -= 0.25 # with every minute decrease the number of barracks per minute to avoi building huge amount of barracks in later minutes of the game.
 
         for th in self.townhalls.idle:
             barracks_near_th = await self.count_builidngs_near_townhall(UnitTypeId.BARRACKS, self.TH_RANGE, th.position)
@@ -184,14 +183,13 @@ class MarineReaperRushBot(BotAI):
             if (
                 self.tech_requirement_progress(UnitTypeId.BARRACKS) == 1 and
                 (barracks_near_th + factory_near_th) < barracks_per_th and
-                self.units(UnitTypeId.BARRACKS).amount < overall_allowed_barracks_count and
-                self.units(UnitTypeId.BARRACKS).amount < self.MAX_BARRACKS and
+                self.already_pending(UnitTypeId.BARRACKS) < 2 and
+                self.structures(UnitTypeId.BARRACKS).amount < overall_allowed_barracks_count and
                 self.can_afford(UnitTypeId.BARRACKS)
             ):
                 workers: Units = self.workers.gathering
                 if (workers):
                     worker: Unit = workers.closest_to(th)
-                    # worker: Unit = workers.furthest_to(workers.center)
                     location: Point2 = await self.find_placement(UnitTypeId.BARRACKS, th.position, max_distance=max_distance_from_th, placement_step=3)
                     if location:
                         worker.build(UnitTypeId.BARRACKS, location)
