@@ -27,6 +27,8 @@ class MarineReaperRushBot(BotAI):
         self.TH_RANGE: int = 15
         self.MAX_BARRACKS: int = 25
         self.BARRACKS_PER_MINUTE: float = 5.0
+        self.aggresive_units = {UnitTypeId.MARINE: {'attack': 10, 'defense': 3},
+                                UnitTypeId.REAPER: {'attack': 11, 'defense': 4}}
 
     async def build_workers(self, workers_per_th: int):
         """Train new workers if the count is insufficient."""
