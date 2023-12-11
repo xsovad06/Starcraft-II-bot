@@ -1,5 +1,5 @@
 import random
-from typing import Set
+from typing import Set, List
 from sc2 import maps
 from sc2.player import Bot, Computer
 from sc2.main import run_game
@@ -18,17 +18,28 @@ class MarineReaperRushBot(BotAI):
     def __init__(self):
         # Select distance calculation method 0, which is the pure python distance calculation without caching or indexing, using math.hypot()
         self.distance_calculation_method: int = 3
+        self.map_width_height_ratio = 0
         self.minute_of_the_game: float = 0
         self.ITERATIONS_PER_MINUTE: int = 165 * 2
         self.MAX_WORKERS:int = 65
-        self.MARINE_RANGE: int = 5
-        self.REAPER_RANGE: int = 5
+        self.MARINE_RANGE: float = 5.0
+        self.REAPER_RANGE: float = 5.0
         self.GROUPING_RANGE: int = 10
+        self.GROUP_SIZE: int = 10
         self.TH_RANGE: int = 15
         self.MAX_BARRACKS: int = 25
         self.BARRACKS_PER_MINUTE: float = 5.0
-        self.aggresive_units = {UnitTypeId.MARINE: {'attack': 10, 'defense': 3},
-                                UnitTypeId.REAPER: {'attack': 11, 'defense': 4}}
+        self.priority_enemy_units: List[int] = [UnitTypeId.MEDIVAC, UnitTypeId.SCV, UnitTypeId.SIEGETANKSIEGED]
+        self.aggresive_units = {UnitTypeId.MARINE: {'attack': 15, 'defense': 6}, # Marines are primary used for defending TH
+                                UnitTypeId.REAPER: {'attack': 13, 'defense': 5}}
+
+    async def incease_attack_defense_group(self, increment: float) -> None:
+        """Every minute incease a bit a number of units that can attack and defense to increase effectivnes of the action."""
+
+        if self.minute_of_the_game % 1 == 0:
+            for unit in self.aggresive_units:
+                self.aggresive_units[unit]['attack'] += increment
+                self.aggresive_units[unit]['defense'] += increment
 
     async def build_workers(self, workers_per_th: int):
         """Train new workers if the count is insufficient."""
