@@ -152,7 +152,7 @@ class MarineReaperRushBot(BotAI):
             if (
                 self.tech_requirement_progress(UnitTypeId.BARRACKS) == 1 and
                 (barracks_near_th + factory_near_th) < barracks_per_th and
-                self.already_pending(UnitTypeId.BARRACKS) < 2 and
+                self.already_pending(UnitTypeId.BARRACKS) <= 1 and
                 self.structures(UnitTypeId.BARRACKS).amount < overall_allowed_barracks_count and
                 self.can_afford(UnitTypeId.BARRACKS)
             ):
