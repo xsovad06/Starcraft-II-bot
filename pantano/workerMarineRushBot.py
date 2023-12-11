@@ -292,18 +292,20 @@ class MarineReaperRushBot(BotAI):
             unit.move(closest_enemy)
             return True
         else:
-            target = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
+            if self.enemy_structures:
+                target = self.enemy_structures.closest_to(unit)
+            else:
+                target = random.choice(self.enemy_start_locations).position
             unit.attack(target)
-            # unit.move(random.choice(self.enemy_start_locations))
         return True
 
     async def reaper_retrieve_to_regenerate_executed(self, reaper: Unit, enemies_can_attack_ground: Units) -> bool:
-        """Keep the reaper in the range 15 of the closest enemy if less than 20hp to enable regenerating process."""
+        """Keep the reaper in the range 15 of the closest enemy if less than 40hp to enable regenerating process."""
  
         enemy_threats_close: Units = enemies_can_attack_ground.filter(lambda unit: unit.distance_to(reaper) < 15)
-        if reaper.health_percentage < 0.3 and enemy_threats_close:
-            retreat_points: Set[Point2] = ( self.get_pathable_neighbors(reaper.position, distance=2) | 
-                                          self.get_pathable_neighbors(reaper.position, distance=4))
+        if reaper.health_percentage < 0.4 and enemy_threats_close:
+            retreat_points: Set[Point2] = (await self.get_pathable_neighbors(reaper.position, distance=2) |
+                                          await self.get_pathable_neighbors(reaper.position, distance=4))
             if retreat_points:
                 closest_enemy: Unit = enemy_threats_close.closest_to(reaper)
                 # Just the point furthest from the enemy
@@ -317,8 +319,8 @@ class MarineReaperRushBot(BotAI):
 
         enemy_threats_very_close: Units = enemies_can_attack_ground.filter(lambda unit: unit.distance_to(unit) < (unit_range - 0.5))
         if unit.weapon_cooldown != 0 and enemy_threats_very_close:
-            retreat_points: Set[Point2] = ( self.get_pathable_neighbors(unit.position, distance=2) | 
-                                          self.get_pathable_neighbors(unit.position, distance=4))
+            retreat_points: Set[Point2] = (await self.get_pathable_neighbors(unit.position, distance=2) |
+                                          await self.get_pathable_neighbors(unit.position, distance=4))
             if retreat_points:
                 closest_enemy: Unit = enemy_threats_very_close.closest_to(unit)
                 # The point furthest from the enemy with respect to the current units position
@@ -332,11 +334,11 @@ class MarineReaperRushBot(BotAI):
 
         reaper = UnitTypeId.REAPER
         enemies: Units = self.enemy_units | self.enemy_structures
-        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground and unit.ground_range > 2) # Trying to elimintate the workers
+        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground and unit.ground_range > 2) # Trying to elimintate running from the workers
         for r in self.units(reaper):
             if await self.reaper_retrieve_to_regenerate_executed(r, enemies):
                 continue
-            if await self.unit_attack_executed(r, enemies.filter(lambda unit: unit.distance_to(r) < self.REAPER_RANGE and not unit.is_flying)):
+            if await self.unit_attack_executed(r, enemies.filter(lambda unit: unit.distance_to(r) < self.REAPER_RANGE and not unit.is_flying), self.priority_enemy_units):
                 continue
             if self.units(reaper).idle.amount > self.aggresive_units[reaper]['defense']:
                 if await self.unit_defend_executed(r, enemies.filter(lambda unit: not unit.is_flying)):
@@ -353,12 +355,12 @@ class MarineReaperRushBot(BotAI):
         """Excecute marine's action according the situation."""
 
         marine = UnitTypeId.MARINE
-        enemies: Units = self.enemy_units | self.enemy_structures
-        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground and unit.ground_range > 3) # Trying to elimintate the workers
+        enemies: Units = self.enemy_units
+        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground) # Trying to elimintate the workers
         for m in self.units(marine).idle:
-            if await self.unit_stay_out_of_range_from_enemy_executed(m, self.MARINE_RANGE, enemies_can_attack):
+            if await self.unit_attack_executed(m, enemies.filter(lambda unit: unit.distance_to(m) < self.MARINE_RANGE), self.priority_enemy_units):
                 continue
-            if await self.unit_attack_executed(m, enemies.filter(lambda unit: unit.distance_to(m) < self.MARINE_RANGE)):
+            if await self.unit_stay_out_of_range_from_enemy_executed(m, self.MARINE_RANGE, enemies_can_attack):
                 continue
             if self.units(marine).idle.amount > self.aggresive_units[marine]['defense']:
                 if await self.unit_defend_executed(m, enemies):
@@ -377,27 +379,31 @@ class MarineReaperRushBot(BotAI):
                 oc(AbilityId.CALLDOWNMULE_CALLDOWNMULE, mf)
 
     async def on_step(self, iteration: int):
-            self.iteration = iteration
-            # TODO: self.step_time() use step time to detect the iterations per minute (to dynamicaly detect)
             self.minute_of_the_game = iteration / self.ITERATIONS_PER_MINUTE
             if self.minute_of_the_game % 1 == 0:
+                if self.minute_of_the_game == 1:
+                    self.map_width_height_ratio = self.game_info.pathing_grid.width / self.game_info.pathing_grid.height
+                await self.incease_attack_defense_group(0.2)
                 print(f'Minutes of the game approximation: {self.minute_of_the_game}')
             await self.build_workers(22)
+            await self.workers_defense()
             await self.build_supplydepots(6, 10)
             await self.morph_cc_to_orbitalcommand()
-            # await self.build_lab_and_research_medivac()
-            await self.expand_to_new_location(4)
+            await self.workers_back_to_work()
             await self.build_barracks(5, 10)
             await self.build_refineries(2, 10)
-            # await self.build_factory(1)
             await self.train_reapers()
-            # await self.train_marines()
-            if iteration % 25 == 0:
+            if not self.can_afford(UnitTypeId.REAPER):
+                await self.train_marines()
+            if self.minute_of_the_game > 10 and iteration % 100 == 0:
+                await self.scann_for_enemies()
+            if iteration % 30 == 0:
+                await self.group_units_in_action()
                 await self.custom_distribute_workers()
             await self.reaper_actions()
-            await self.group_units()
-            # await self.marine_actions()
-            await self.workers_back_to_work()
+            await self.marine_actions()
+            await self.group_units_around_th()
+            await self.expand_to_new_location(6)
             await self.use_orbitalcommand_ability()
 
     # Helper functions
@@ -509,14 +515,15 @@ class MarineReaperRushBot(BotAI):
                         else:
                             w.gather(mf)
 
-    async def filter_units_in_range_for_grouping(self, th_position: Point2, unit_type_id: int, grouping_range: int):
+    async def get_units_group_in_range(self, position: Point2, unit_type_ids: List[int], grouping_range: int) -> List[Units]:
         """Filter units within the specified range from the townhall for grouping."""
 
         units_in_range = []
-        for unit in self.units(unit_type_id).idle:
-            distance_to_townhall = unit.position.distance_to(th_position)
-            if distance_to_townhall <= grouping_range:
-                units_in_range.append(unit)
+        for unit_type_id in unit_type_ids:
+            for unit in self.units(unit_type_id).idle:
+                distance_to_position = unit.position.distance_to(position)
+                if distance_to_position <= grouping_range:
+                    units_in_range.append(unit)
 
         return units_in_range
 
@@ -567,12 +574,12 @@ class MarineReaperRushBot(BotAI):
         neighbors.add(Point2((position.x + distance, position.y - distance)))  # Southwest neighbor
         neighbors.add(Point2((position.x + distance, position.y + distance)))  # Southeast neighbor
 
-        return set({x for x in neighbors if self.in_pathing_grid(x)})
+        return set({neihgbor for neihgbor in neighbors if self.in_pathing_grid(neihgbor)})
 
 def main():
     run_game(
         maps.get("sc2-ai-cup-2022"), 
-        [Bot(Race.Terran, MarineReaperRushBot()), Computer(Race.Terran, Difficulty.Hard)],
+        [Bot(Race.Terran, MarineReaperRushBot()), Computer(Race.Terran, Difficulty.VeryHard)],
         realtime=False
     )
 
