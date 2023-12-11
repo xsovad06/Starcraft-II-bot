@@ -198,15 +198,8 @@ class MarineReaperRushBot(BotAI):
             for barrack in self.structures(UnitTypeId.BARRACKS).idle:
                 barrack.train(UnitTypeId.MARINE)
 
-    async def train_siege_tanks(self):
-        """Make siege tanks while have enough resources and remaining supply."""
-
-        if self.structures(UnitTypeId.FACTORY) and self.can_afford(UnitTypeId.SIEGETANK):
-            for factory in self.structures(UnitTypeId.FACTORY).idle:
-                factory.train(UnitTypeId.SIEGETANK)
-
-    async def group_units(self):
-        """Gather units at the target location."""
+    async def group_units_around_th(self) -> None:
+        """Gather units by type at the target location."""
 
         unit_type_ids = [UnitTypeId.MARINE, UnitTypeId.REAPER]
         for th in self.townhalls:
