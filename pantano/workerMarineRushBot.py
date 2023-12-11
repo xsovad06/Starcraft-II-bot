@@ -123,58 +123,6 @@ class MarineReaperRushBot(BotAI):
                     if location:
                         worker.build(UnitTypeId.FACTORY, location)
 
-    async def build_lab_and_research_medivac(self):
-        """Meet medivac unit training requirements."""
-
-        if self.tech_requirement_progress(UnitTypeId.MEDIVAC) == 0:
-            cc = self.units(UnitTypeId.COMMAND_CENTER).idle.first
-            if not self.structures(UnitTypeId.LABORATORY).ready and self.can_afford(UnitTypeId.LABORATORY) and cc:
-                cc.build(UnitTypeId.LABORATORY)
-
-            if self.structures(UnitTypeId.LABORATORY).ready and self.can_afford(UnitTypeId.RESEARCH_MEDIVAC_TRANSPORT):
-                self.research(UnitTypeId.RESEARCH_MEDIVAC_TRANSPORT)
-    
-    async def train_medivac(self):
-        """Train a Medivac unit if possible."""
-
-        cc = self.units(UnitTypeId.COMMAND_CENTER).idle.first
-        if (
-            self.tech_requirement_progress(UnitTypeId.MEDIVAC) == 1 and
-            self.can_afford(UnitTypeId.MEDIVAC) and cc and self.units(UnitTypeId.MEDIVAC).amount < 1
-        ):
-            cc.train(UnitTypeId.MEDIVAC)
-
-    async def medivac_micromanagement(self):
-        """Manage medivac units to utilize their ability."""
-
-        medivacs = self.units(UnitTypeId.MEDIVAC)
-        # Keep medivacs in close proximity to your army
-        for medivac in medivacs:
-            closest_friendly_unit = self.units.filter(is_alive=True, is_ready=True).closest_to(medivac)
-            if closest_friendly_unit:
-                medivac.move(closest_friendly_unit)
-
-        # Prioritize healing on critical units
-        for medivac in medivacs:
-            critical_units = self.units.filter(is_alive=True, is_ready=True, health_percentage_below=0.5)
-            if critical_units:
-                closest_critical_unit = critical_units.closest_to(medivac)
-                if closest_critical_unit:
-                    medivac.heal(closest_critical_unit)
-
-        # Move medivacs to intercept enemy fire
-        for medivac in medivacs:
-            enemy_ranged_units = self.enemy_units.filter(is_alive=True, is_ready=True, is_ranged=True)
-            if enemy_ranged_units:
-                closest_enemy_ranged_unit = enemy_ranged_units.closest_to(medivac)
-                if closest_enemy_ranged_unit:
-                    medivac.move(closest_enemy_ranged_unit.position)
-
-        # Use medivacs for drops and reinforcements
-        if self.detect_enemy_attack():
-            for medivac in medivacs:
-                medivac.move(self.enemy_start_locations.random_point())
-
     async def expand_to_new_location(self, count: int):
         """Build new command centers until the limit is reached"""
 
