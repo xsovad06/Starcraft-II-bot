@@ -561,7 +561,52 @@ class MarineReaperRushBot(BotAI):
                 builidngs_count += 1
         return builidngs_count
 
-    def get_pathable_neighbors(self, position: Point2, distance: int = 1) -> Set[Point2]:
+    async def count_increments_for_with_height(self, increment_x: int, increment_y: int) -> Set[int]:
+        """According to the map width height ration adjust the increments for finding the pathable positions in the corner of the map."""
+
+        # Height bigger than width
+        if self.map_width_height_ratio < 1:
+            inc_x = increment_x * self.map_width_height_ratio
+            inc_y = increment_y
+        else:
+            inc_x = increment_x
+            inc_y = increment_y * self.map_width_height_ratio
+
+        return (round(inc_x), round(inc_y))
+
+    async def get_pathable_corner_position(self, starting_position: Point2, increment_x: int, increment_y: int) -> Point2:
+        """Find the corner point of the map."""
+
+        inc_x, inc_y = await self.count_increments_for_with_height(increment_x, increment_y)
+        new_position = Point2((starting_position.x + inc_x, starting_position.y + inc_y))
+        while new_position.x < self.game_info.pathing_grid.width and new_position.y < self.game_info.pathing_grid.height:
+            if not self.in_pathing_grid(new_position):
+                # try to make smaller step
+                if increment_x < 1:
+                    break
+                else:
+                    increment_x -= 1
+                    increment_y -= 1
+                    continue
+            starting_position = new_position
+            new_position = Point2((new_position.x + increment_x, new_position.y + increment_y))
+            # Reset increment to original value for next steps
+            inc_x, inc_y = await self.count_increments_for_with_height(increment_x, increment_y)
+        return starting_position
+
+    async def get_patroling_positions_around_map(self) -> List[Point2]:
+        """Create patroling cycle for the unit to explore map corners while searching for enemies."""
+
+        center_point = self.game_info.map_center
+        step = 12
+        top_right = await self.get_pathable_corner_position(center_point, step, -step)
+        top_left = await self.get_pathable_corner_position(center_point, -step, -step)
+        bottom_right = await self.get_pathable_corner_position(center_point, step, step)
+        bottom_left = await self.get_pathable_corner_position(center_point, -step, step)
+
+        return [top_left, top_right, bottom_left, bottom_right]
+
+    async def get_pathable_neighbors(self, position: Point2, distance: int = 1) -> Set[Point2]:
         """Create a set of coordinates to every direction from given position in the given distance."""
 
         neighbors = set()
