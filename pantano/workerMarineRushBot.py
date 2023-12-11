@@ -51,6 +51,16 @@ class MarineReaperRushBot(BotAI):
                 self.supply_left > 0 and self.supply_workers < count):
                 th.train(UnitTypeId.SCV)
 
+    async def workers_defense(self):
+        """Workers defend themself if in danger."""
+
+        worker = UnitTypeId.SCV
+        enemies: Units = self.enemy_units | self.enemy_structures
+        enemies_can_attack: Units = enemies.filter(lambda unit: unit.can_attack_ground and unit.ground_range > 2)
+        for w in self.units(worker).idle:
+            if await self.unit_attack_executed(w, enemies_can_attack.filter(lambda unit: unit.distance_to(w) < 10), []):
+                continue
+
     async def workers_back_to_work(self):
         """Free workers should return to gather minerals. Chose the closest mineral field with some minerals left."""
 
