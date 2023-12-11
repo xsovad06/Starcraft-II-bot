@@ -208,36 +208,46 @@ class MarineReaperRushBot(BotAI):
                     group_location: Point2 = await self.select_best_grouping_location(
                         th.position,
                         self.GROUPING_RANGE,
-                        random.choice(self.enemy_start_locations).position
+                        self.enemy_start_locations[0].position
                     )
-                    units_to_group: Units = await self.filter_units_in_range_for_grouping(th.position, unit_type_id, self.GROUPING_RANGE)
+                    units_to_group: Units = await self.get_units_group_in_range(th.position, [unit_type_id], self.GROUPING_RANGE)
 
                     for unit in units_to_group:
                         unit.move(group_location)
 
-    async def group_units_patrol(self) -> Units:
-        """Group of units patrol between current and next suitable location."""
+    async def group_units_in_action(self) -> None:
+        """Try to hold units int he group while executing some action."""
 
         unit_type_ids = [UnitTypeId.MARINE, UnitTypeId.REAPER]
-        for th in self.townhalls:
-            for unit_type_id in unit_type_ids:
-                if self.units(unit_type_id).idle.amount > 5:
-                    group_patrol_location: Point2 = await self.select_best_grouping_location(
-                        th.position,
-                        self.GROUPING_RANGE + 5,
-                        random.choice(self.enemy_start_locations).position
-                    )
-                    units_to_group: Units = await self.filter_units_in_range_for_grouping(th.position, unit_type_id, self.GROUPING_RANGE + 5)
+        if self.units(unit_type_ids[0]).idle.amount + self.units(unit_type_ids[1]).idle.amount > self.GROUP_SIZE:
+            unit_position = random.choice(self.units(unit_type_ids[1])).position
+            units_to_group: Units = await self.get_units_group_in_range(unit_position, unit_type_ids, self.GROUPING_RANGE)
 
-                    for unit in units_to_group:
-                        unit.patrol(group_patrol_location)
+            for unit in units_to_group:
+                unit.move(unit_position)
 
-    async def unit_attack_executed(self, unit: Unit, enemies_in_range: Units) -> bool:
+    async def scann_for_enemies(self) -> None:
+        """Find hidden enemies and strutures with scaut unit(reaper)."""
+
+        scauts = []
+        if self.units(UnitTypeId.REAPER).idle.amount > 4:
+            scauts = random.sample(self.units(UnitTypeId.REAPER).idle, 4)
+
+            patrolling_points = await self.get_patroling_positions_around_map()
+            for idx, scaut in enumerate(scauts):
+                scaut.patrol(patrolling_points[idx], queue=True)
+
+    async def unit_attack_executed(self, unit: Unit, enemies_in_range: Units, prioritize_units: List[int]) -> bool:
         """Unit is ready to attack, shoot nearest enemy/building."""
 
         if unit.weapon_cooldown == 0 and enemies_in_range:
-            closest_enemy: Unit =  enemies_in_range.sorted(lambda x: x.distance_to(unit))[0]
-            unit.attack(closest_enemy)
+            sorted_by_distance = enemies_in_range.sorted(lambda x: x.distance_to(unit))
+            if prioritize_units:
+                priority_enemy: Units = sorted_by_distance.filter(lambda x: x.type_id in prioritize_units)
+                target: Unit = priority_enemy[0] if priority_enemy else sorted_by_distance[0]
+            else:
+                target: Unit = sorted_by_distance[0]
+            unit.attack(target)
             return True
         return False
 
