@@ -3,8 +3,8 @@ from sc2.player import Bot, Computer
 from sc2.main import run_game
 from sc2.data import Race, Difficulty
 
-from pantano.workerReaperMarineRushBot import MarineReaperRushBot
-from pantano.workerMarineRushExample import MarineRushBot
+from AI.seminars.cv7.pantano.reaperMarineRushBot import MarineReaperRushBot
+from AI.seminars.cv7.pantano.marineRushExampleBot import MarineRushBot
 
 run_game(
     maps.get("sc2-ai-cup-2022"),
