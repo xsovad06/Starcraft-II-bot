@@ -620,13 +620,3 @@ class MarineReaperRushBot(BotAI):
         neighbors.add(Point2((position.x + distance, position.y + distance)))  # Southeast neighbor
 
         return set({neihgbor for neihgbor in neighbors if self.in_pathing_grid(neihgbor)})
-
-def main():
-    run_game(
-        maps.get("sc2-ai-cup-2022"), 
-        [Bot(Race.Terran, MarineReaperRushBot()), Computer(Race.Terran, Difficulty.VeryHard)],
-        realtime=False
-    )
-
-if __name__ == "__main__":
-    main()
