@@ -65,14 +65,6 @@ class MarineReaperRushBot(BotAI):
                 mf: Unit = self.mineral_field.closest_to(w)
                 if mf.mineral_contents > 100:
                     w.gather(mf)
-        # if self.townhalls:
-        #     for w in self.workers.idle:
-        #         th: Unit = self.townhalls.closest_to(w)
-        #         mfs: Units = self.mineral_field.closer_than(10, th)
-        #         for mf in mfs:
-        #             mf: Unit = mf.closest_to(w)
-        #             if mf.mineral_contents > 100:
-        #                 w.gather(mf)
 
     async def build_supplydepots(self, supply_left: int, supply_used: int):
         """Build new supply depot if current depots are used according to the parameters."""
